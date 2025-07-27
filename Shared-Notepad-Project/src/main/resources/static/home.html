@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <title>Shared Notepad – Home</title>
+    <link rel="stylesheet" href="css/styles.css" />
+</head>
+<body>
+<main class="container">
+    <header>
+        <h1>
+            Welcome, <span id="profile-name"></span>
+            (<span id="profile-email"></span>)
+        </h1>
+    </header>
+
+    <section>
+        <h2>Your Rooms</h2>
+        <div class="rooms">
+            <div>
+                <h3>Owned Rooms</h3>
+                <ul id="owned-rooms"></ul>
+            </div>
+            <div>
+                <h3>Member Rooms</h3>
+                <ul id="member-rooms"></ul>
+            </div>
+        </div>
+
+        <form id="create-room-form" class="inline-form">
+            <input
+                    type="text"
+                    id="create-room-code"
+                    placeholder="Room code (optional)"
+            />
+            <button>Create Room</button>
+        </form>
+
+        <form id="join-room-form" class="inline-form">
+            <input
+                    type="text"
+                    id="join-room-code"
+                    placeholder="Room code to join"
+                    required
+            />
+            <button>Join Room</button>
+        </form>
+    </section>
+
+    <section>
+        <h2>Your Notes</h2>
+        <ul id="notes-list"></ul>
+    </section>
+
+    <section>
+        <h2>Recent Activity</h2>
+        <ul id="activities"></ul>
+    </section>
+</main>
+
+<script src="js/api.js" type="module"></script>
+<script src="js/home.js" type="module"></script>
+</body>
+</html>

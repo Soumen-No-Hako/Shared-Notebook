@@ -1,0 +1,60 @@
+body {
+  font-family: sans-serif;
+  background: #f9f9f9;
+  margin: 0;
+  padding: 0;
+  color: #333;
+}
+
+.container {
+  max-width: 800px;
+  margin: 2rem auto;
+  background: #fff;
+  padding: 1.5rem;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.1);
+}
+
+h1, h2, h3 {
+  margin-top: 0;
+}
+
+.rooms {
+  display: flex;
+  gap: 2rem;
+}
+
+.inline-form {
+  display: inline-block;
+  margin: 1rem 0;
+}
+
+.inline-form input {
+  padding: 0.4rem;
+  margin-right: 0.4rem;
+}
+
+input, textarea, button {
+  font-size: 1rem;
+}
+
+button {
+  padding: 0.5rem 1rem;
+  cursor: pointer;
+}
+
+ul {
+  list-style: none;
+  padding-left: 0;
+}
+
+ul li {
+  padding: 0.2rem 0;
+}
+
+textarea {
+  width: 100%;
+  box-sizing: border-box;
+  font-family: monospace;
+  font-size: 1rem;
+  line-height: 1.4;
+}
