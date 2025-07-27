@@ -1,0 +1,577 @@
+﻿===== File: src\main\java\com\example\sharednotepad\config\WebSocketConfig.java =====
+package com.example.sharednotepad.config;
+
+import org.springframework.context.annotation.Configuration;
+import org.springframework.messaging.simp.config.MessageBrokerRegistry;
+import org.springframework.web.socket.config.annotation.*;
+
+@Configuration
+@EnableWebSocketMessageBroker
+public class WebSocketConfig implements WebSocketMessageBrokerConfigurer {
+
+    @Override
+    public void configureMessageBroker(MessageBrokerRegistry registry) {
+        registry.enableSimpleBroker("/topic");
+        registry.setApplicationDestinationPrefixes("/app");
+    }
+
+    @Override
+    public void registerStompEndpoints(StompEndpointRegistry registry) {
+        registry.addEndpoint("/ws")
+                .setAllowedOriginPatterns("*")
+                .withSockJS();
+    }
+}
+
+===== File: src\main\java\com\example\sharednotepad\controller\AppController.java =====
+package com.example.sharednotepad.controller;
+
+import com.example.sharednotepad.dto.HomeDTO;
+import com.example.sharednotepad.dto.ActivityDTO;
+import com.example.sharednotepad.model.Profile;
+import com.example.sharednotepad.service.ProfileService;
+import com.example.sharednotepad.service.RoomService;
+import com.example.sharednotepad.service.NoteService;
+import com.example.sharednotepad.util.CurlPrinter;
+import org.springframework.web.bind.annotation.*;
+
+import java.time.Instant;
+import java.util.List;
+
+@RestController
+@RequestMapping("/app")
+public class AppController {
+    private final ProfileService profileSvc;
+    private final RoomService roomSvc;
+    private final NoteService noteSvc;
+
+    public AppController(ProfileService ps, RoomService rs, NoteService ns) {
+        this.profileSvc = ps;
+        this.roomSvc    = rs;
+        this.noteSvc    = ns;
+    }
+
+    @GetMapping("/home")
+    public HomeDTO home(@RequestParam String userId) {
+        Profile p = profileSvc.findById(userId)
+                .orElseThrow(() -> new IllegalArgumentException("User not found"));
+        var rooms = roomSvc.getRoomsOfUser(userId);
+        var notes = noteSvc.getNotesOfUser(userId);
+        // stub recent activities
+        List<ActivityDTO> acts = List.of(
+                new ActivityDTO(userId, "joined_room", rooms.get(0).getRoomCode(), Instant.now())
+        );
+        String endpoint = "http://localhost:8080/app/home";
+        CurlPrinter.printCurl("GET",endpoint);
+        return new HomeDTO(p, rooms, notes, acts);
+    }
+}
+
+===== File: src\main\java\com\example\sharednotepad\controller\NoteController.java =====
+package com.example.sharednotepad.controller;
+
+import com.example.sharednotepad.dto.CreateNoteRequest;
+import com.example.sharednotepad.dto.UpdateNoteRequest;
+import com.example.sharednotepad.model.Note;
+import com.example.sharednotepad.service.NoteService;
+import com.example.sharednotepad.util.CurlPrinter;
+import org.springframework.http.ResponseEntity;
+import org.springframework.messaging.simp.SimpMessagingTemplate;
+import org.springframework.web.bind.annotation.*;
+
+@RestController
+@RequestMapping("/app/note")
+public class NoteController {
+    private final NoteService svc;
+    private final SimpMessagingTemplate msgs;
+
+    public NoteController(NoteService svc, SimpMessagingTemplate msgs) {
+        this.svc  = svc;
+        this.msgs = msgs;
+    }
+
+    @PostMapping("/create")
+    public Note create(@RequestBody CreateNoteRequest req) {
+        String endpoint = "http://localhost:8080/app/note/create";
+        CurlPrinter.printCurl("POST",endpoint, req);
+        return svc.createNote(req.getName(), req.getOwnerId(), req.getRoomCode());
+    }
+
+    @PostMapping("/{noteId}/update")
+    public ResponseEntity<Void> update(@PathVariable String noteId,
+                                       @RequestBody UpdateNoteRequest req) {
+        svc.updateNoteData(noteId, req.getData());
+        // broadcast to subscribers
+        msgs.convertAndSend("/topic/notes/" + noteId, req.getData());
+        String endpoint = "http://localhost:8080/app/note/"+noteId+"/update";
+        CurlPrinter.printCurl("POST",endpoint, req);
+        return ResponseEntity.ok().build();
+    }
+}
+
+===== File: src\main\java\com\example\sharednotepad\controller\RoomController.java =====
+package com.example.sharednotepad.controller;
+
+import com.example.sharednotepad.dto.CreateRoomRequest;
+import com.example.sharednotepad.dto.RoomDetailsDTO;
+import com.example.sharednotepad.model.Room;
+import com.example.sharednotepad.service.RoomService;
+import com.example.sharednotepad.util.CurlPrinter;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.*;
+
+@RestController
+@RequestMapping("/app/room")
+public class RoomController {
+    private final RoomService svc;
+
+    public RoomController(RoomService svc) {
+        this.svc = svc;
+    }
+
+    @PostMapping("/create")
+    public Room create(@RequestBody CreateRoomRequest req) {
+        String endpoint = "http://localhost:8080/app/room/create";
+        CurlPrinter.printCurl("POST",endpoint, req);
+        return svc.createRoom(req.getRoomCode(), req.getOwnerId());
+    }
+
+    @PostMapping("/{roomCode}/join")
+    public ResponseEntity<Void> join(@PathVariable String roomCode,
+                                     @RequestParam String userId) {
+        svc.joinRoom(roomCode, userId);
+        return ResponseEntity.ok().build();
+    }
+
+    @GetMapping("/{roomCode}")
+    public RoomDetailsDTO getDetails(@PathVariable String roomCode) {
+        return svc.getRoomDetails(roomCode);
+    }
+}
+
+===== File: src\main\java\com\example\sharednotepad\dto\ActivityDTO.java =====
+package com.example.sharednotepad.dto;
+
+import lombok.AllArgsConstructor;
+import lombok.Data;
+import java.time.Instant;
+
+@Data
+@AllArgsConstructor
+public class ActivityDTO {
+    private String userId;
+    private String action;
+    private String targetId;
+    private Instant timestamp;
+}
+
+===== File: src\main\java\com\example\sharednotepad\dto\CreateNoteRequest.java =====
+package com.example.sharednotepad.dto;
+
+import lombok.Data;
+
+@Data
+public class CreateNoteRequest {
+    private String name;
+    private String ownerId;
+    private String roomCode;
+}
+
+===== File: src\main\java\com\example\sharednotepad\dto\CreateRoomRequest.java =====
+package com.example.sharednotepad.dto;
+
+import lombok.Data;
+
+@Data
+public class CreateRoomRequest {
+    private String roomCode;
+    private String ownerId;
+}
+
+===== File: src\main\java\com\example\sharednotepad\dto\HomeDTO.java =====
+package com.example.sharednotepad.dto;
+
+import com.example.sharednotepad.model.Profile;
+import com.example.sharednotepad.model.Room;
+import com.example.sharednotepad.model.Note;
+import lombok.Data;
+import java.util.List;
+
+@Data
+public class HomeDTO {
+    private Profile profile;
+    private List<Room> ownedRooms;
+    private List<Room> memberRooms;
+    private List<Note> notes;
+    private List<ActivityDTO> recentActivities;
+
+    public HomeDTO(Profile p, List<Room> rooms, List<Note> notes, List<ActivityDTO> acts) {
+        this.profile = p;
+        this.ownedRooms = rooms.stream()
+                .filter(r -> r.getOwnerId().equals(p.getUserId()))
+                .toList();
+        this.memberRooms = rooms;
+        this.notes = notes;
+        this.recentActivities = acts;
+    }
+}
+
+===== File: src\main\java\com\example\sharednotepad\dto\RoomDetailsDTO.java =====
+package com.example.sharednotepad.dto;
+
+import com.example.sharednotepad.model.Room;
+import lombok.Data;
+import java.util.Set;
+
+@Data
+public class RoomDetailsDTO {
+    private String roomCode;
+    private String ownerId;
+    private Set<String> members;
+    private Set<String> noteIds;
+    private java.util.Map<String,String> roles;
+
+    public static RoomDetailsDTO from(Room r) {
+        RoomDetailsDTO dto = new RoomDetailsDTO();
+        dto.setRoomCode(r.getRoomCode());
+        dto.setOwnerId(r.getOwnerId());
+        dto.setMembers(r.getMembers());
+        dto.setNoteIds(r.getNoteIds());
+        dto.setRoles(r.getRoles());
+        return dto;
+    }
+}
+
+===== File: src\main\java\com\example\sharednotepad\dto\UpdateNoteRequest.java =====
+package com.example.sharednotepad.dto;
+
+import lombok.Data;
+
+@Data
+public class UpdateNoteRequest {
+    private String data;
+}
+
+===== File: src\main\java\com\example\sharednotepad\model\Note.java =====
+package com.example.sharednotepad.model;
+
+import lombok.*;
+import org.springframework.data.annotation.Id;
+import org.springframework.data.mongodb.core.mapping.Document;
+import java.util.Set;
+
+@Data
+@NoArgsConstructor
+@AllArgsConstructor
+@Document(collection = "notes")
+public class Note {
+    @Id
+    private String id;
+    private String name;
+    private String ownerId;
+    private Set<String> memberIds;
+    private String data;
+}
+
+===== File: src\main\java\com\example\sharednotepad\model\Profile.java =====
+package com.example.sharednotepad.model;
+
+import lombok.*;
+import org.springframework.data.annotation.Id;
+import org.springframework.data.mongodb.core.mapping.Document;
+import java.util.Set;
+
+@Data
+@NoArgsConstructor
+@AllArgsConstructor
+@Document(collection = "profiles")
+public class Profile {
+    @Id
+    private String userId;
+    private String name;
+    private String email;
+    private String password;
+    private Set<String> roomIds;
+}
+
+===== File: src\main\java\com\example\sharednotepad\model\Room.java =====
+package com.example.sharednotepad.model;
+
+import lombok.*;
+import org.springframework.data.annotation.Id;
+import org.springframework.data.mongodb.core.mapping.Document;
+import java.util.Set;
+import java.util.Map;
+
+@Data
+@NoArgsConstructor
+@AllArgsConstructor
+@Document(collection = "rooms")
+public class Room {
+    @Id
+    private String roomCode;
+    private String ownerId;
+    private Set<String> noteIds;
+    private Set<String> members;
+    private Map<String, String> roles; // userId -> role (owner/read/write)
+}
+
+===== File: src\main\java\com\example\sharednotepad\repository\NoteRepository.java =====
+package com.example.sharednotepad.repository;
+
+import com.example.sharednotepad.model.Note;
+import org.springframework.data.mongodb.repository.MongoRepository;
+
+public interface NoteRepository extends MongoRepository<Note, String> {
+}
+
+===== File: src\main\java\com\example\sharednotepad\repository\ProfileRepository.java =====
+package com.example.sharednotepad.repository;
+
+import com.example.sharednotepad.model.Profile;
+import org.springframework.data.mongodb.repository.MongoRepository;
+import java.util.Optional;
+
+public interface ProfileRepository extends MongoRepository<Profile, String> {
+    Optional<Profile> findByEmail(String email);
+}
+
+===== File: src\main\java\com\example\sharednotepad\repository\RoomRepository.java =====
+package com.example.sharednotepad.repository;
+
+import com.example.sharednotepad.model.Room;
+import org.springframework.data.mongodb.repository.MongoRepository;
+import java.util.Optional;
+
+public interface RoomRepository extends MongoRepository<Room, String> {
+    Optional<Room> findByRoomCode(String roomCode);
+    boolean existsByRoomCode(String roomCode);
+}
+
+===== File: src\main\java\com\example\sharednotepad\service\NoteService.java =====
+package com.example.sharednotepad.service;
+
+import com.example.sharednotepad.model.Note;
+import com.example.sharednotepad.repository.NoteRepository;
+import org.springframework.stereotype.Service;
+import java.util.HashSet;
+import java.util.List;
+import java.util.NoSuchElementException;
+
+@Service
+public class NoteService {
+    private final NoteRepository noteRepo;
+    private final RoomService roomService;
+
+    public NoteService(NoteRepository noteRepo, RoomService roomService) {
+        this.noteRepo = noteRepo;
+        this.roomService = roomService;
+    }
+
+    public Note createNote(String name, String ownerId, String roomCode) {
+        Note n = new Note();
+        n.setName(name);
+        n.setOwnerId(ownerId);
+        n.setMemberIds(new HashSet<>(List.of(ownerId)));
+        n.setData("");
+        Note saved = noteRepo.save(n);
+        roomService.addNoteToRoom(roomCode, saved.getId());
+        return saved;
+    }
+
+    public Note updateNoteData(String noteId, String data) {
+        Note n = noteRepo.findById(noteId)
+                .orElseThrow(() -> new NoSuchElementException("Note not found"));
+        n.setData(data);
+        return noteRepo.save(n);
+    }
+
+    public List<Note> getNotesOfUser(String userId) {
+        return noteRepo.findAll().stream()
+                .filter(n -> n.getMemberIds().contains(userId))
+                .toList();
+    }
+}
+
+===== File: src\main\java\com\example\sharednotepad\service\ProfileService.java =====
+package com.example.sharednotepad.service;
+
+import com.example.sharednotepad.model.Profile;
+import com.example.sharednotepad.repository.ProfileRepository;
+import org.springframework.stereotype.Service;
+import java.util.Optional;
+
+@Service
+public class ProfileService {
+    private final ProfileRepository repo;
+
+    public ProfileService(ProfileRepository repo) {
+        this.repo = repo;
+    }
+
+    public Profile register(Profile p) {
+        return repo.save(p);
+    }
+
+    public Optional<Profile> findById(String userId) {
+        return repo.findById(userId);
+    }
+
+    public Optional<Profile> findByEmail(String email) {
+        return repo.findByEmail(email);
+    }
+}
+
+===== File: src\main\java\com\example\sharednotepad\service\RoomService.java =====
+package com.example.sharednotepad.service;
+
+import com.example.sharednotepad.dto.RoomDetailsDTO;
+import com.example.sharednotepad.model.Room;
+import com.example.sharednotepad.repository.RoomRepository;
+import org.springframework.stereotype.Service;
+import java.security.SecureRandom;
+import java.util.*;
+
+@Service
+public class RoomService {
+    private final RoomRepository roomRepo;
+    private static final String ALPHANUM = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
+    private final SecureRandom rnd = new SecureRandom();
+
+    public RoomService(RoomRepository roomRepo) {
+        this.roomRepo = roomRepo;
+    }
+
+    public Room createRoom(String requestedCode, String ownerId) {
+        String code = (requestedCode != null && !requestedCode.isBlank())
+                ? requestedCode
+                : generateUniqueCode();
+
+        if (roomRepo.existsByRoomCode(code)) {
+            throw new IllegalArgumentException("Room code already exists");
+        }
+
+        Room r = new Room();
+        r.setRoomCode(code);
+        r.setOwnerId(ownerId);
+        r.setMembers(new HashSet<>(List.of(ownerId)));
+        r.setRoles(Map.of(ownerId, "owner"));
+        r.setNoteIds(new HashSet<>());
+        return roomRepo.save(r);
+    }
+
+    private String generateUniqueCode() {
+        String code;
+        do {
+            var sb = new StringBuilder(5);
+            for (int i = 0; i < 5; i++) {
+                sb.append(ALPHANUM.charAt(rnd.nextInt(ALPHANUM.length())));
+            }
+            code = sb.toString();
+        } while (roomRepo.existsByRoomCode(code));
+        return code;
+    }
+
+    public void joinRoom(String roomCode, String userId) {
+        Room r = roomRepo.findByRoomCode(roomCode)
+                .orElseThrow(() -> new NoSuchElementException("Room not found"));
+        r.getMembers().add(userId);
+        r.getRoles().put(userId, "read");
+        roomRepo.save(r);
+    }
+
+    public RoomDetailsDTO getRoomDetails(String roomCode) {
+        Room r = roomRepo.findByRoomCode(roomCode)
+                .orElseThrow(() -> new NoSuchElementException("Room not found"));
+        return RoomDetailsDTO.from(r);
+    }
+
+    public List<Room> getRoomsOfUser(String userId) {
+        return roomRepo.findAll().stream()
+                .filter(r -> r.getMembers().contains(userId))
+                .toList();
+    }
+
+    public void addNoteToRoom(String roomCode, String noteId) {
+        Room r = roomRepo.findByRoomCode(roomCode)
+                .orElseThrow(() -> new NoSuchElementException("Room not found"));
+        r.getNoteIds().add(noteId);
+        roomRepo.save(r);
+    }
+}
+
+===== File: src\main\java\com\example\sharednotepad\SharedNotepadApplication.java =====
+package com.example.sharednotepad;
+
+import com.example.sharednotepad.model.Profile;
+import com.example.sharednotepad.model.Room;
+import com.example.sharednotepad.model.Note;
+import com.example.sharednotepad.repository.*;
+import org.springframework.boot.CommandLineRunner;
+import org.springframework.boot.SpringApplication;
+import org.springframework.boot.autoconfigure.SpringBootApplication;
+import org.springframework.context.annotation.Bean;
+
+import java.util.*;
+
+@SpringBootApplication
+public class SharedNotepadApplication {
+
+    public static void main(String[] args) {
+        SpringApplication.run(SharedNotepadApplication.class, args);
+    }
+
+    @Bean
+    CommandLineRunner initData(ProfileRepository pr,
+                               RoomRepository rr,
+                               NoteRepository nr) {
+        return args -> {
+            pr.deleteAll();
+            rr.deleteAll();
+            nr.deleteAll();
+
+            Profile alice = new Profile("u1","Alice","alice@example.com","pwd",Set.of());
+            Profile bob   = new Profile("u2","Bob","bob@example.com","pwd",Set.of());
+            pr.saveAll(List.of(alice,bob));
+
+            Room r = new Room("R1234","u1",
+                    new HashSet<>(),
+                    new HashSet<>(List.of("u1","u2")),
+                    new HashMap<>());
+            r.getRoles().put("u1","owner");
+            r.getRoles().put("u2","read");
+            rr.save(r);
+
+            Note n = new Note(null,"FirstNote","u1",
+                    new HashSet<>(List.of("u1","u2")),
+                    "");
+            n = nr.save(n);
+            r.getNoteIds().add(n.getId());
+            rr.save(r);
+        };
+    }
+}
+
+===== File: src\main\java\com\example\sharednotepad\util\CurlPrinter.java =====
+package com.example.sharednotepad.util;
+import com.fasterxml.jackson.databind.ObjectMapper;
+public class CurlPrinter {
+    private static final ObjectMapper mapper = new ObjectMapper();
+    public static void printCurl(String method, String url, Object requestBody) {
+        try {
+            String json = mapper.writeValueAsString(requestBody);
+            String curl = String.format("curl -X %s \"%s\" -H \"Content-Type: application/json\" -d '%s'",
+                    method.toUpperCase(),
+                    url,
+                    json);
+            System.out.println("[cURL] " + curl);
+        } catch (Exception e) {
+            System.out.println("[cURL] Failed to generate JSON: " + e.getMessage());
+        }
+    }
+    public static void printCurl(String method, String url) {
+        String curl = String.format("curl -X %s \"%s\"", method.toUpperCase(), url);
+        System.out.println("[cURL] " + curl);
+    }
+}
+
