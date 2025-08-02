@@ -33,4 +33,5 @@ Get-ChildItem -Path . -Recurse -Include *.java |
         "" | Out-File -FilePath $OutputFile -Encoding UTF8 -Append
     }
 
+# Normal ending statement
 Write-Host "Merged all .java files into `"$OutputFile`""
