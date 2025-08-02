@@ -64,7 +64,7 @@ A collaborative platform for sharing and editing notes in real time. Users can c
 ### Configuration
 
 - Update database connection settings in `src/main/resources/application.properties`.
-- visit http://localhost:8080/v3/api-docs for full documentation after running
+- visit http://localhost:8080 for full url details after running
 
 ## Usage
 
