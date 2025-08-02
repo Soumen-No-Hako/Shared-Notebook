@@ -2,30 +2,53 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8" />
-    <title>Shared Notepad – Login</title>
-    <link rel="stylesheet" href="css/styles.css" />
+    <title>My API Docs</title>
+
+    <!-- 1. Swagger UI CSS from CDN -->
+    <link
+            rel="stylesheet"
+            href="https://unpkg.com/swagger-ui-dist/swagger-ui.css"
+    />
+
+    <!-- 2. Your Custom Overrides -->
+    <style>
+    .swagger-ui .topbar {
+      background: #2ecc71 !important;
+    }
+    .swagger-ui .opblock {
+      border-radius: 6px;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+      transition: transform 0.2s;
+    }
+    .swagger-ui .opblock:hover {
+      transform: translateY(-2px);
+    }
+    .swagger-ui .try-out__btn {
+      background: #e74c3c !important;
+      color: #fff !important;
+    }
+  </style>
 </head>
 <body>
-<main class="container">
-    <h1>Welcome to Shared Notepad</h1>
-    <form id="login-form">
-        <label for="userId">Enter your User ID:</label>
-        <input type="text" id="userId" required />
-        <button type="submit">Go to Home</button>
-    </form>
-</main>
+<!-- 3. Mount point -->
+<div id="swagger-ui"></div>
 
+<!-- 4. Swagger UI Bundle -->
+<script src="https://unpkg.com/swagger-ui-dist/swagger-ui-bundle.js"></script>
 <script>
-    document
-      .getElementById('login-form')
-      .addEventListener('submit', e => {
-        e.preventDefault();
-        const userId = document.getElementById('userId').value.trim();
-        if (!userId) return;
-        window.location.href = `home.html?userId=${encodeURIComponent(
-          userId
-        )}`;
+    window.onload = () => {
+      SwaggerUIBundle({
+        url: "/v3/api-docs",
+        dom_id: "#swagger-ui",
+        deepLinking: true,
+        layout: "BaseLayout",
+        presets: [SwaggerUIBundle.presets.apis],
+        operationsSorter: "alpha",
+        tagsSorter: "alpha",
+        // you can inject more custom CSS here:
+        customCss: '.swagger-ui .info { background: #fbfbfb; padding: 16px; }'
       });
+    };
   </script>
 </body>
 </html>
