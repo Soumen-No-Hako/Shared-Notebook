@@ -1,15 +1,17 @@
 package com.example.sharednotepad.model;
 
 import lombok.*;
-import org.springframework.data.annotation.Id;
-import org.springframework.data.mongodb.core.mapping.Document;
+import javax.persistence.Entity;
+import javax.persistence.Id;
+import javax.persistence.Table;
 import java.util.Set;
 import java.util.Map;
 
 @Data
 @NoArgsConstructor
 @AllArgsConstructor
-@Document(collection = "rooms")
+@Entity
+@Table(name = "ROOM")
 public class Room {
     @Id
     private String roomCode;
